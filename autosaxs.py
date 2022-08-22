@@ -45,16 +45,6 @@ class DataSet:
 
     def __init__(self, dotdat: str = ''):
         self.dotdat = dotdat
-        self.q_array = np.array([])
-        self.qsq_array = np.array([])
-        self.i_array = np.array([])
-        self.i_raw_array = np.array([])
-        self.e_array = np.array([])
-        self.roi_array = np.array([])
-        self.log_i_array = np.array([])
-        self.ln_i_array = np.array([])
-        self.i_qsq_array = np.array([])
-        self.guinier_model_array = np.array([])
         self.tag = ''
         self.cycle_stats_array = []
 
@@ -83,6 +73,10 @@ class DataSet:
         self.df['i*q^2'] = self.df['q^2'] * self.df['int']
         self.df['ln_int'] = np.log(self.df['int'], where=(self.df['int'] != np.nan))
         self.df['err/int'] = self.df['err'] / self.df['int']
+        # Create empty cols
+        self.df['q*Rg'] = np.empty(shape=self.df['int'].shape)
+        self.df['norm_kratky'] = np.empty(shape=self.df['int'].shape)
+        self.df['q^2int'] = np.empty(shape=self.df['int'].shape)
 
     def read_dotdat(self):
         self.raw_data_array = np.loadtxt(self.dotdat, skiprows=2)
@@ -111,8 +105,7 @@ class DataSet:
             plt.axvline(math.sqrt(3), color='gray', alpha=0.)
             plt.show()
 
-    def calculate_guiner_plot(self, guinier_fit_lims: tuple = (0, 0),
-                              guinier_qsq_lims: tuple = (0, 0),
+    def calculate_guiner_plot(self, guinier_qsq_lims: tuple = (0, 0),
                               guinier_qRg: float = 0.0,
                               show: bool = False):
         lr_df = self.df.dropna()
@@ -122,8 +115,6 @@ class DataSet:
         linreg = LinearRegression()
         linreg.fit(q2, lnint)
         y_pred = linreg.predict(q2)
-        # chi_sq = calc_chi_sq(y_pred, lnint)
-        chi_sq = 0.0
         self.m = linreg.coef_[0]
         self.R_g = math.sqrt(3 * (-1 * self.m))
         self.c = linreg.intercept_
@@ -190,10 +181,6 @@ class AnalysisRun:
             if not os.path.isdir(self.plot_path):
                 os.mkdir(self.plot_path)
 
-    def calc_rg(self, m):
-        r_g = math.sqrt(3 * (-m))
-        return r_g
-
     def write_cycle_stats(self, cycle_data):
         with open(self.analysis_path + 'Guinier_stats.txt', 'w') as f:
             f.write('dat set, gradient, intercept, radius_gyr, chi_sq, max qRg' + '\n')
@@ -206,41 +193,41 @@ class AnalysisRun:
                 f.write(str(outstr))
 
     def collate_cycle(self, cycle_data):
+        print('<collate_cycle> collating cycle_data')
+        # Appended Series:
         self.ensemble_intensity_list.append(cycle_data.df['int'])
         self.ensemble_log_intensity_list.append(cycle_data.df['int_log10'])
         self.ensemble_ln_intensity_list.append(cycle_data.df['ln_int'])
-        print(f"{cycle_data.df['norm_kratky'].shape=}")
+        self.ensemble_qrg_list.append(cycle_data.df['q*Rg'])
         self.ensemble_i_qsq_list.append(cycle_data.df['i*q^2'])
+        self.ensemble_normkratky_list.append(cycle_data.df['norm_kratky'])
+        # Appended values:
         self.ensemble_dat_names.append(cycle_data.tag)
+        # Static lists
         self.ensemble_q_list = cycle_data.df['q']
-        print(f"{cycle_data.df['q*Rg'].shape=}")
         self.ensemble_qsq_list = cycle_data.df['q^2']
 
         # self.ensemble_guinier_model.append(cycle_data.guinier_model_array)
         # self.ensemble_stats.append(cycle_data.cycle_stats_array)
 
-    def crunch_ensemble(self, csv_type):
+    def crunch_ensemble(self, csv_type: str):
         """
         SAXS CSV
         """
-        # generate the title:
-        if 'saxs' in csv_type:  # If we're writing out the basic SAXS plot
+        string_array = None
+        if csv_type == 'saxs':
             string_array = []
             title_string = ['q']
             for lbl in self.ensemble_dat_names:
-                print(f'{lbl}')
                 title_string.append(lbl + ' intensity')
             string_array.append(title_string)
-            print(f'{string_array}')
             # Crunching here:
             dataset_length_list = []
             [dataset_length_list.append(len(self.ensemble_intensity_list[x])) for x in
              range(len(self.ensemble_intensity_list))]
             if len(set(dataset_length_list)) != 1:
-                print('WARNING YOUR DATA FILES ARE NOT THE SAME LENGTH')
-                print(f'{dataset_length_list}')
+                pass
             for q, qpoint in enumerate(self.ensemble_q_list):
-                # print(f'{q=} {qpoint=}')
                 qp_string = [self.ensemble_q_list[q]]
                 for k, dotdat_i in enumerate(self.ensemble_intensity_list):
                     qp_string.append(dotdat_i[q])
@@ -248,13 +235,13 @@ class AnalysisRun:
         """
         log SAXS CSV
         """
-        if 'log-saxs' in csv_type:
+        if csv_type == 'log_saxs':
             string_array = []
             title_string = ['q']
             for lbl in self.ensemble_dat_names:
                 title_string.append(lbl + ' log(I)')
             string_array.append(title_string)
-            ### Crunching here:
+            # Crunching here:
             for q, qpoint in enumerate(self.ensemble_q_list):
                 qp_string = [self.ensemble_q_list[q]]
                 for k, dotdat_logi in enumerate(self.ensemble_log_intensity_list):
@@ -263,13 +250,13 @@ class AnalysisRun:
         """
         Guinier CSV
         """
-        if 'guinier' in csv_type:
+        if csv_type == 'guinier':
             string_array = []
             title_string = ['q**2']
             for lbl in self.ensemble_dat_names:
                 title_string.append(lbl + ' log(I)')
             string_array.append(title_string)
-            ### Crunching here:
+            # Crunching here:
             for q, qpoint in enumerate(self.ensemble_qsq_list):
                 qp_string = [self.ensemble_qsq_list[q]]
                 for k, dotdat_logi in enumerate(self.ensemble_ln_intensity_list):
@@ -278,13 +265,13 @@ class AnalysisRun:
         """
         Guinier fit CSV
         """
-        if 'guinier-fit' in csv_type:
+        if csv_type == 'guinier-fit':
             string_array = []
             title_string = ['q**2']
             for lbl in self.ensemble_dat_names:
                 title_string.append(lbl + ' log(I) fit')
             string_array.append(title_string)
-            ### Crunching here:
+            # Crunching here:
             for q, qpoint in enumerate(self.ensemble_qsq_list):
                 qp_string = [self.ensemble_qsq_list[q]]
                 for k, dotdat_logi in enumerate(self.ensemble_guinier_model):
@@ -295,13 +282,13 @@ class AnalysisRun:
         """
         Kratky CSV
         """
-        if 'kratky' in csv_type:
+        if csv_type == 'kratky':
             string_array = []
             title_string = ['q']
             for lbl in self.ensemble_dat_names:
                 title_string.append(lbl + ' I * q**2')
             string_array.append(title_string)
-            ### Crunching here:
+            # Crunching here:
             for q, qpoint in enumerate(self.ensemble_q_list):
                 qp_string = [self.ensemble_q_list[q]]
                 for k, dotdat_iqsq in enumerate(self.ensemble_i_qsq_list):
@@ -311,19 +298,22 @@ class AnalysisRun:
         """
         Norm. Kratky CSV
         """
-        if 'norm_kratky' in csv_type:
+        if csv_type == 'norm_kratky':
             string_array = []
-            title_string = ['qRg']
+            title_string = []
             for lbl in self.ensemble_dat_names:
                 title_string.append(lbl + ' qRg')
+                title_string.append(lbl + ' (qR_g)^2I(q)/I(0)')
             string_array.append(title_string)
             # Crunching here:
-            for q, qpoint in enumerate(self.ensemble_qrg_list):
-                qp_string = [self.ensemble_qrg_list[q]]
-                for k, dotdat_logi in enumerate(self.ensemble_normkratky_list):
-                    qp_string.append(dotdat_logi[q])
+            for q, xpt in enumerate(self.ensemble_q_list):
+                qp_string = []
+                for r, run in enumerate(self.ensemble_dat_names):
+                    qp_string.append(self.ensemble_qrg_list[r][q])
+                    qp_string.append(self.ensemble_normkratky_list[r][q])
                 string_array.append(qp_string)
-
+        if string_array is None:
+            print('ERROR: No csv_type recognised!')
         return string_array
 
     def write_csv(self, csv_type):
@@ -333,26 +323,13 @@ class AnalysisRun:
             writer = csv.writer(f)
             writer.writerows(string_array)
 
-    def clean_nans(self, line):
-        '''
-        Sort out NaN cleaning routine
-        :param line:
-        :return:
-        '''
-        print(line)
-        for val in line:
-            if len(val) == 3:
-                val = str(val)
-        print(line)
-
     def write_xlsx(self, csv_type):
         string_array = self.crunch_ensemble(csv_type)
-        print(f'{string_array}')
+        # print(f'{string_array}')
         print('<write_xlsx>  Writing xlsx file out...')
         # print(string_array)
-        workbook = xw.Workbook(f'{self.analysis_path}raw_saxs_data_{self.dat_number}.xlsx', )
+        workbook = xw.Workbook(f'{self.analysis_path}{csv_type}_{self.dat_number}.xlsx', )
         worksheet = workbook.add_worksheet()
-
         row = 0
         # Iterate over the data and write it out row by row.
         for combined_data_line in string_array:
@@ -387,8 +364,7 @@ class AnalysisRun:
             cycle_data.read_dotdat()
             self.collate_cycle(cycle_data)
             plt.figure()
-            plt.xlim([0.1, 0.8])
-            plt.plot(cycle_data.q_array[:], cycle_data.i_array[:])
+            plt.plot(cycle_data.df['q'], cycle_data.df['int'])
             plt.show()
         self.write_xlsx('saxs')
 
@@ -422,11 +398,9 @@ class AnalysisRun:
             plt.figure()
             plt.xlabel('$q$ $\AA^{-1}$')
             from matplotlib import cm
-            color_set = cm.get_cmap('Set1', self.dat_number)
-            # color_set = color_set
             for dotdat in self.dat_list:
                 cycle_data = DataSet(dotdat)
-                cycle_data.read_dotdat()  # Read in the raw file. Done with standard library
+                cycle_data.read_dotdat()
                 if log10:
                     plt.plot(cycle_data.df['q'], cycle_data.df['int_log10'], linewidth=0.5, label=f'{dotdat}')
                     plt.ylabel('log ($I$) / a.u.')
@@ -441,52 +415,48 @@ class AnalysisRun:
                       kratky: bool = True,
                       norm_kratky: bool = True,
                       pseudo_guiner: bool = False,
-                      show_all: bool = False):
+                      show_all: bool = False,
+                      write_xlsx: bool = True,
+                      write_csv: bool = True):
         self.file_setup()
+
+        if write_csv:
+            self.write_csv('saxs')
+            self.write_csv('log_saxs')
+
+        if write_xlsx:
+            self.write_xlsx('saxs')
+            self.write_xlsx('log_saxs')
+
         for k, dotdat in enumerate(self.dat_list):
             cycle_data = DataSet(dotdat=dotdat)
 
             if guiner:
-                cycle_data.calculate_guiner_plot(guinier_fit_lims=self.guinier_fit_lims,
-                                                 guinier_qsq_lims=self.guinier_qsq_lims,
-                                                 guinier_qRg=self.guinier_qRg,
+                cycle_data.calculate_guiner_plot(guinier_qsq_lims=self.guinier_qsq_lims, guinier_qRg=self.guinier_qRg,
                                                  show=show_all)
+                if write_xlsx:
+                    self.write_xlsx('guinier')
+
+                if write_csv:
+                    self.write_csv('guinier')
+
             if kratky:
                 cycle_data.calculate_kratky_plot(show=show_all)
+
+                if write_xlsx:
+                    self.write_xlsx('kratky')
+
+                if write_csv:
+                    self.write_csv('kratky')
 
             if norm_kratky:
                 cycle_data.calculate_norm_kratky_plot(show=show_all)
 
+                if write_xlsx:
+                    self.write_xlsx('norm_kratky')
+
+                if write_csv:
+                    self.write_csv('norm_kratky')
+
             self.collate_cycle(cycle_data=cycle_data)
             self.write_cycle_stats(cycle_data=cycle_data)
-
-        self.write_csv('saxs')
-        self.write_csv('log-saxs')
-        self.write_csv('guinier')
-        self.write_csv('kratky')
-        # self.write_csv('norm_kratky')
-        self.write_csv('guinier-fit')
-
-    def start(self):
-        self.file_setup()
-        """
-        Analysis cycle is started below
-        """
-        # Here select the parameters to calculate
-        for dotdat in self.dat_list:
-            cycle_data = DataSet(dotdat)  # Initiate the dataset object
-            cycle_data.read_dotdat()  # Read in the raw file. Done with standard library
-            cycle_data.calculate_derivs()  # Calculate the derivative values
-            if self.mode == 'pseudo-rg':
-                print("Performing pseudo-Rg calculations")
-                self.pseudo_guinier(cycle_data)
-            else:
-                self.plot_guinier(cycle_data)
-            self.collate_cycle(cycle_data)  # Adds cycle data to the ensemble arrays
-
-        self.write_cycle_stats()
-        self.write_csv('saxs')
-        self.write_csv('log-saxs')
-        self.write_csv('guinier')
-        self.write_csv('kratky')
-        self.write_csv('guinier-fit')
