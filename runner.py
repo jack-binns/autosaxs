@@ -32,12 +32,12 @@ if __name__ == '__main__':
     Here we start the analysis run:
     """
 
-    analysis_run.inspect_data(combine=True, log10=False, qlims=(0, 0.5))
+    # analysis_run.inspect_data(combine=True, log10=False, qlims=(0, 0.5))
 
     analysis_run.batch_process(guiner=True,
                                kratky=True,
                                norm_kratky=True,
-                               show_all=False,
+                               show_all=True,
                                write_csv=True,
                                write_xlsx=True)
     # analysis_run.convert_to_xlsx()

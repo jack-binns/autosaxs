@@ -77,6 +77,7 @@ class DataSet:
         self.df['q*Rg'] = np.empty(shape=self.df['int'].shape)
         self.df['norm_kratky'] = np.empty(shape=self.df['int'].shape)
         self.df['q^2int'] = np.empty(shape=self.df['int'].shape)
+        self.df['guinier_model'] = np.empty(shape=self.df['int'].shape)
 
     def read_dotdat(self):
         self.raw_data_array = np.loadtxt(self.dotdat, skiprows=2)
@@ -107,7 +108,7 @@ class DataSet:
 
     def calculate_guiner_plot(self, guinier_qsq_lims: tuple = (0, 0),
                               guinier_qRg: float = 0.0,
-                              show: bool = False):
+                              show: bool = True):
         lr_df = self.df.dropna()
         lr_df = lr_df[(guinier_qsq_lims[0] < lr_df['q^2']) & (lr_df['q^2'] < guinier_qsq_lims[1])]
         q2 = lr_df['q^2'].values.reshape(-1, 1)
@@ -120,22 +121,18 @@ class DataSet:
         self.c = linreg.intercept_
         self.I_0 = math.exp(self.c)
         guinier_model = []
-        for x in self.df['q^2'].values:
-            check = math.sqrt(x) * self.R_g
-            if check <= guinier_qRg:
-                guinier_model.append(((self.m * x) + self.c))
-            else:
-                guinier_model.append(np.nan)
+        for i, x in enumerate(self.df['q^2'].values):
+            guinier_model.append(((self.m * x) + self.c))
         guinier_model = np.array(guinier_model, dtype=object)
+        self.df['guinier_model'] = guinier_model
         if len(guinier_model) == 0:
             print(f"WARNING: {self.tag} has no points where qR_g < analysis_run.guinier_qRg ({guinier_qRg})")
         if show:
             plt.figure()
             plt.xlabel(r'$q^2$')
             plt.ylabel(r'$ln(I)$')
-            plt.plot(lr_df['q^2'], lr_df['ln_int'])
-            plt.plot(lr_df['q^2'], y_pred)
-            plt.plot(self.df['q^2'], guinier_model)
+            plt.plot(lr_df['q^2'], lr_df['ln_int'], 'o')
+            plt.plot(q2, y_pred)
             plt.show()
         return
 
@@ -201,13 +198,14 @@ class AnalysisRun:
         self.ensemble_qrg_list.append(cycle_data.df['q*Rg'])
         self.ensemble_i_qsq_list.append(cycle_data.df['i*q^2'])
         self.ensemble_normkratky_list.append(cycle_data.df['norm_kratky'])
+        self.ensemble_guinier_model.append(cycle_data.df['guinier_model'])
         # Appended values:
         self.ensemble_dat_names.append(cycle_data.tag)
         # Static lists
         self.ensemble_q_list = cycle_data.df['q']
         self.ensemble_qsq_list = cycle_data.df['q^2']
 
-        # self.ensemble_guinier_model.append(cycle_data.guinier_model_array)
+
         # self.ensemble_stats.append(cycle_data.cycle_stats_array)
 
     def crunch_ensemble(self, csv_type: str):
@@ -265,7 +263,7 @@ class AnalysisRun:
         """
         Guinier fit CSV
         """
-        if csv_type == 'guinier-fit':
+        if csv_type == 'guinier_fit':
             string_array = []
             title_string = ['q**2']
             for lbl in self.ensemble_dat_names:
@@ -436,9 +434,11 @@ class AnalysisRun:
                                                  show=show_all)
                 if write_xlsx:
                     self.write_xlsx('guinier')
+                    self.write_xlsx('guinier_fit')
 
                 if write_csv:
                     self.write_csv('guinier')
+                    self.write_csv('guinier_fit')
 
             if kratky:
                 cycle_data.calculate_kratky_plot(show=show_all)
