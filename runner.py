@@ -37,7 +37,7 @@ if __name__ == '__main__':
     analysis_run.batch_process(guiner=True,
                                kratky=True,
                                norm_kratky=True,
-                               show_all=True,
+                               show_all=False,
                                write_csv=True,
                                write_xlsx=True)
     # analysis_run.convert_to_xlsx()

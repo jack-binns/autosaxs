@@ -55,6 +55,7 @@ class DataSet:
         self.c = 0.0
         self.R_g = 0.0
         self.I_0 = 0.0
+        self.Rsq = 0.0
 
         print("Working on ", self.dotdat)
         self.grab_data_name()
@@ -113,13 +114,16 @@ class DataSet:
         lr_df = lr_df[(guinier_qsq_lims[0] < lr_df['q^2']) & (lr_df['q^2'] < guinier_qsq_lims[1])]
         q2 = lr_df['q^2'].values.reshape(-1, 1)
         lnint = lr_df['ln_int'].values.reshape(-1, 1)
+        # print(f"{q2.shape} {lnint.shape}")
         linreg = LinearRegression()
         linreg.fit(q2, lnint)
         y_pred = linreg.predict(q2)
+        self.Rsq = linreg.score(X=q2, y=lnint)
         self.m = linreg.coef_[0]
         self.R_g = math.sqrt(3 * (-1 * self.m))
         self.c = linreg.intercept_
         self.I_0 = math.exp(self.c)
+        self.cycle_stats_array = [self.tag, self.m[0], self.c[0], self.R_g, self.Rsq]
         guinier_model = []
         for i, x in enumerate(self.df['q^2'].values):
             guinier_model.append(((self.m * x) + self.c))
@@ -165,6 +169,7 @@ class AnalysisRun:
         self.ensemble_qrg_list = []
         self.ensemble_normkratky_list = []
         self.ensemble_guinier_model = []
+
         self.ensemble_stats = []
 
     def create_output_folder(self):
@@ -178,14 +183,14 @@ class AnalysisRun:
             if not os.path.isdir(self.plot_path):
                 os.mkdir(self.plot_path)
 
-    def write_cycle_stats(self, cycle_data):
+    def write_ensemble_guinier_stats(self):
         with open(self.analysis_path + 'Guinier_stats.txt', 'w') as f:
-            f.write('dat set, gradient, intercept, radius_gyr, chi_sq, max qRg' + '\n')
+            f.write('dat set, gradient, intercept, radius_gyr, R^2' + '\n')
             for line in self.ensemble_stats:
-                # print('line[0]', line[0])
-                outstr = line[0][0]
-                for x in line[0][1:]:
-                    outstr = outstr + ', ' + str(x)
+                # print(line)
+                outstr = line[0]
+                for val in line[1:]:
+                    outstr = outstr + ', ' + str(val)
                 outstr = outstr + '\n'
                 f.write(str(outstr))
 
@@ -204,9 +209,8 @@ class AnalysisRun:
         # Static lists
         self.ensemble_q_list = cycle_data.df['q']
         self.ensemble_qsq_list = cycle_data.df['q^2']
-
-
-        # self.ensemble_stats.append(cycle_data.cycle_stats_array)
+        # Stats from Guinier
+        self.ensemble_stats.append(cycle_data.cycle_stats_array)
 
     def crunch_ensemble(self, csv_type: str):
         """
@@ -459,4 +463,4 @@ class AnalysisRun:
                     self.write_csv('norm_kratky')
 
             self.collate_cycle(cycle_data=cycle_data)
-            self.write_cycle_stats(cycle_data=cycle_data)
+        self.write_ensemble_guinier_stats()
