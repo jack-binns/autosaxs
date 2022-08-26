@@ -417,7 +417,7 @@ class AnalysisRun:
             plt.legend()
             plt.show()
 
-    def batch_process(self, guiner: bool = True,
+    def batch_process(self, guinier: bool = True,
                       kratky: bool = True,
                       norm_kratky: bool = True,
                       pseudo_guiner: bool = False,
