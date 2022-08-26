@@ -12,7 +12,7 @@ if __name__ == '__main__':
     '''
     Here we create the analysis run:
     '''
-    analysis_run = autosaxs.AnalysisRun()         # Select which of these two you want
+    analysis_run = autosaxs.AnalysisRun()
 
     """
     Insert the path to the target folder:
@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     # analysis_run.inspect_data(combine=True, log10=False, qlims=(0, 0.5))
 
-    analysis_run.batch_process(guiner=True,
+    analysis_run.batch_process(guinier=True,
                                kratky=True,
                                norm_kratky=True,
                                show_all=False,
