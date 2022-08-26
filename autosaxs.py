@@ -120,11 +120,11 @@ class DataSet:
         y_pred = linreg.predict(q2)
         self.Rsq = linreg.score(X=q2, y=lnint)
         self.m = linreg.coef_[0]
-        if self.m > 0:
+        if self.m < 0:
             self.R_g = math.sqrt(3 * (-1 * self.m))
         else:
             print('WARNING: Guinier fit gradient is >0, undefined in this range')
-            self.R_g = None
+            self.R_g = 0.0
         self.c = linreg.intercept_
         self.I_0 = math.exp(self.c)
         self.cycle_stats_array = [self.tag, self.m[0], self.c[0], self.R_g, self.Rsq]
@@ -437,7 +437,7 @@ class AnalysisRun:
         for k, dotdat in enumerate(self.dat_list):
             cycle_data = DataSet(dotdat=dotdat)
 
-            if guiner:
+            if guinier:
                 cycle_data.calculate_guiner_plot(guinier_qsq_lims=self.guinier_qsq_lims, guinier_qRg=self.guinier_qRg,
                                                  show=show_all)
                 if write_xlsx:
