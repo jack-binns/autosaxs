@@ -250,9 +250,10 @@ class AnalysisRun:
             # Crunching here:
             for q, qpoint in enumerate(self.ensemble_q_list):
                 qp_string = [self.ensemble_q_list[q]]
-                for k, dotdat_logi in enumerate(self.ensemble_log_intensity_list):
-                    qp_string.append(dotdat_logi[q])
+                for k, int in enumerate(self.ensemble_intensity_list):
+                    qp_string.append(int[q])
                 string_array.append(qp_string)
+
         """
         Guinier CSV
         """
@@ -426,14 +427,6 @@ class AnalysisRun:
                       write_csv: bool = True):
         self.file_setup()
 
-        if write_csv:
-            self.write_csv('saxs')
-            self.write_csv('log_saxs')
-
-        if write_xlsx:
-            self.write_xlsx('saxs')
-            self.write_xlsx('log_saxs')
-
         for k, dotdat in enumerate(self.dat_list):
             cycle_data = DataSet(dotdat=dotdat)
 
@@ -467,4 +460,12 @@ class AnalysisRun:
                     self.write_csv('norm_kratky')
 
             self.collate_cycle(cycle_data=cycle_data)
+
+        if write_csv:
+            self.write_csv('saxs')
+            self.write_csv('log_saxs')
+
+        if write_xlsx:
+            self.write_xlsx('saxs')
+            self.write_xlsx('log_saxs')
         self.write_ensemble_guinier_stats()
