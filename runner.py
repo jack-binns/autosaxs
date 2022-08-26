@@ -17,7 +17,7 @@ if __name__ == '__main__':
     """
     Insert the path to the target folder:
     """
-    analysis_run.root_path = '../test_data/'
+    analysis_run.root_path = '../htd2/'
 
 
     """
@@ -32,7 +32,9 @@ if __name__ == '__main__':
     Here we start the analysis run:
     """
 
-    # analysis_run.inspect_data(combine=True, log10=False, qlims=(0, 0.5))
+    analysis_run.inspect_data(combine=True, log10=False, qlims=(0, 0.5))
+
+    # analysis_run.identify_guinier_ranges()
 
     analysis_run.batch_process(guinier=True,
                                kratky=True,
