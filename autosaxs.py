@@ -210,18 +210,11 @@ class AnalysisRun:
         print("Analyzing ", len(self.dat_list), " files in work folder ", self.root_path)
         print(self.dat_list[0], " to ", self.dat_list[-1])
 
-    def convert_to_xlsx(self):
-        pass
-        # self.file_setup()
-        # print("<convert_to_xlsx> Converting .dat to xlsx...")
-        # for dotdat in self.dat_list:
-        #     cycle_data = DataSet(dotdat)
-        #     cycle_data.read_dotdat()
-        #     self.collate_cycle(cycle_data)
-        #     plt.figure()
-        #     plt.plot(cycle_data.df['q'], cycle_data.df['int'])
-        #     plt.show()
-        # self.write_xlsx('saxs')
+    def convert_to_xlsx(self, tag: str = ''):
+        self.grab_dotdat_list(tag=tag)
+        for k, dotdat in enumerate(self.dat_list):
+            cycle_data = DataSet(dotdat=dotdat)
+            cycle_data.df[['q', 'int', 'err']].to_excel(f"{self.analysis_path}{cycle_data.tag}.xlsx", index=False)
 
     def inspect_data(self, tag='', qlims=(0, 100), combine=True, log10=True):
         self.grab_dotdat_list(tag=tag)
@@ -277,20 +270,14 @@ class AnalysisRun:
         for dotdat in self.dat_list:
             cycle_data = DataSet(dotdat)
             split = dotdat.split(sep="\\")
-            print(split)
             fname = split[-1].split(sep='.')[0]
-            print(fname)
             cycle_data.read_dotdat()  # Read in the raw file
-            print(cycle_data.raw_df.shape)
             trim_df = cycle_data.raw_df.iloc[first_point:, 0:3]
-            print(trim_df.shape)
             trim_df.to_csv(f"{trim_path}{fname}_trim.dat", index=False)
-        return trim_df
 
     def batch_process(self, guinier: bool = True,
                       kratky: bool = True,
                       norm_kratky: bool = True,
-                      pseudo_guiner: bool = False,
                       show_all: bool = False,
                       write_xlsx: bool = True,
                       write_csv: bool = True):
