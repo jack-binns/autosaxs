@@ -267,7 +267,6 @@ class AnalysisRun:
         :return: trimmed df, from raw_df, so contains all points including negative intensities
         """
         self.grab_dotdat_list(tag=tag)
-
         trim_path = self.root_path + f'trimmed_data_{first_point}point\\'
         print("Writing output to ", trim_path)
         if not os.path.isdir(trim_path):
