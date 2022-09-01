@@ -49,7 +49,7 @@ class DataSet:
         # Updated object variables
         self.raw_data_array = np.array([])
         self.df = pd.DataFrame()
-        self.raw_q = pd.DataFrame()
+        self.raw_df = pd.DataFrame()
         self.m = 0.0
         self.c = 0.0
         self.R_g = 0.0
@@ -82,10 +82,9 @@ class DataSet:
     def read_dotdat(self):
         self.raw_data_array = np.loadtxt(self.dotdat, skiprows=2)
         raw_df = pd.DataFrame(self.raw_data_array, columns=['q', 'int', 'err'])
-        self.raw_q = raw_df
-        self.raw_q['q^2'] = self.raw_q['q'] * self.raw_q['q']
+        self.raw_df = raw_df
+        self.raw_df['q^2'] = self.raw_df['q'] * self.raw_df['q']
         self.df = raw_df.mask(raw_df['int'] <= 0)
-        # self.df = raw_df
         # Generate all the derivative values required for the various fits
         self.calculate_derivs()
 
@@ -203,6 +202,14 @@ class AnalysisRun:
         print(self.dat_list[0], " to ", self.dat_list[-1])
         self.create_output_folder()
 
+    def grab_dotdat_list(self, tag: str = ''):
+        self.dat_list = glob.glob(f'{self.root_path}*{tag}*.dat')
+        self.dat_list = sorted_nicely(self.dat_list)
+        if len(self.dat_list) == 0:
+            print("ERROR: No data files found - check tag parameter!")
+        print("Analyzing ", len(self.dat_list), " files in work folder ", self.root_path)
+        print(self.dat_list[0], " to ", self.dat_list[-1])
+
     def convert_to_xlsx(self):
         pass
         # self.file_setup()
@@ -217,14 +224,7 @@ class AnalysisRun:
         # self.write_xlsx('saxs')
 
     def inspect_data(self, tag='', qlims=(0, 100), combine=True, log10=True):
-        self.dat_list = glob.glob(f'{self.root_path}*{tag}*.dat')
-        self.dat_list = sorted_nicely(self.dat_list)
-        self.dat_number = len(self.dat_list)
-        if self.dat_number == 0:
-            print("ERROR: No data files found - check tag parameter!")
-        print("Analyzing ", self.dat_number, " files in work folder ", self.root_path)
-        print(self.dat_list[0], " to ", self.dat_list[-1])
-
+        self.grab_dotdat_list(tag=tag)
         # Start cycle here:
         if not combine:
             for dotdat in self.dat_list:
@@ -258,6 +258,35 @@ class AnalysisRun:
                     plt.title(f'{cycle_data.tag}')
             plt.legend()
             plt.show()
+
+    def batch_trim_qpoints(self, tag: str = '', first_point: int = 0):
+        """
+        Function to trim the n = first_point lines from a SAXS data set
+        :param tag: optional tag to subselect
+        :param first_point: int, starting index for trimming points from the start of the dataset
+        :return: trimmed df, from raw_df, so contains all points including negative intensities
+        """
+        self.grab_dotdat_list(tag=tag)
+
+        trim_path = self.root_path + f'trimmed_data_{first_point}point\\'
+        print("Writing output to ", trim_path)
+        if not os.path.isdir(trim_path):
+            os.mkdir(trim_path)
+
+        # Now we trim to n_points:
+
+        for dotdat in self.dat_list:
+            cycle_data = DataSet(dotdat)
+            split = dotdat.split(sep="\\")
+            print(split)
+            fname = split[-1].split(sep='.')[0]
+            print(fname)
+            cycle_data.read_dotdat()  # Read in the raw file
+            print(cycle_data.raw_df.shape)
+            trim_df = cycle_data.raw_df.iloc[first_point:, 0:3]
+            print(trim_df.shape)
+            trim_df.to_csv(f"{trim_path}{fname}_trim.dat", index=False)
+        return trim_df
 
     def batch_process(self, guinier: bool = True,
                       kratky: bool = True,
