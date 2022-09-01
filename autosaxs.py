@@ -11,7 +11,7 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LinearRegression
+import statsmodels.api as sm
 
 # Global plotting settings
 plt.rcParams['axes.linewidth'] = 0.5  # set the value globally
@@ -20,28 +20,18 @@ plt.rcParams["font.family"] = "Arial"
 
 def sorted_nicely(ugly):
     """ Sorts the given iterable in the way that is expected.
-
     Required arguments:
-    l -- The iterable to be sorted.
-
+    ugly -- The iterable to be sorted.
     """
     convert = lambda text: int(text) if text.isdigit() else text
     alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
     return sorted(ugly, key=alphanum_key)
 
 
-def calc_chi_sq(exp, obs):
-    print("Calculating chi^2...")
-    chi_sq = 0
-    for i, pt in enumerate(exp):
-        chi_sq = chi_sq + ((obs[i] - exp[i]) ** 2 / abs(exp[i]))
-    print(f'chi_sq = {chi_sq}')
-    return chi_sq[0]
-
-
 class DataSet:
 
     def __init__(self, dotdat: str = ''):
+
         self.dotdat = dotdat
         self.tag = ''
         self.cycle_stats_array = []
@@ -51,8 +41,11 @@ class DataSet:
         self.df = pd.DataFrame()
         self.raw_df = pd.DataFrame()
         self.m = 0.0
+        self.m_err = None
         self.c = 0.0
+        self.c_err = None
         self.R_g = 0.0
+        self.R_g_err = None
         self.I_0 = 0.0
         self.Rsq = 0.0
 
@@ -64,15 +57,17 @@ class DataSet:
         path = self.dotdat.split("\\")
         tag = path[-1].split(".")[0]
         trim_tag = tag.replace('_', '')
-        print("tag: ", trim_tag)
         self.tag = trim_tag
+        return self.tag
 
     def calculate_derivs(self):
         self.df['int_log10'] = np.log10(self.df['int'], where=(self.df['int'] != np.nan))
         self.df['q^2'] = self.df['q'] * self.df['q']
         self.df['i*q^2'] = self.df['q^2'] * self.df['int']
         self.df['ln_int'] = np.log(self.df['int'], where=(self.df['int'] != np.nan))
+        self.df['guinier_deriv'] = np.gradient(self.df['ln_int'])
         self.df['err/int'] = self.df['err'] / self.df['int']
+        self.df['guinier_error'] = self.df['guinier_deriv'] * self.df['err/int']
         # Create empty cols
         self.df['q*Rg'] = np.empty(shape=self.df['int'].shape)
         self.df['norm_kratky'] = np.empty(shape=self.df['int'].shape)
@@ -108,27 +103,40 @@ class DataSet:
             plt.axvline(math.sqrt(3), color='gray', alpha=0.)
             plt.show()
 
-    def calculate_guiner_plot(self, guinier_qsq_lims: tuple = (0, 0),
-                              guinier_qRg: float = 0.0,
-                              show: bool = True):
+    def calculate_guinier_plot(self, guinier_qsq_lims: tuple = (0, 0),
+                               guinier_qRg: float = 1.3, err_lim: float = 0.0005,
+                               show: bool = True):
+        """
+        Calculate an Rg value using the Guinier approximation. The profile is firstly assessed for linearity using
+        the 'guinier_error' parameter described above.
+        :param guinier_qsq_lims: Hard Guinier limits.
+        :param guinier_qRg: 1.3 by default
+        :param err_lim: Error limit used for 'guinier_error' filtering.
+        :param show: bool, for display
+        :return:
+        """
         lr_df = self.df.dropna()
+        lr_df = lr_df[(lr_df['guinier_error'] < err_lim) & (lr_df['guinier_error'] > -err_lim)]
         lr_df = lr_df[(guinier_qsq_lims[0] < lr_df['q^2']) & (lr_df['q^2'] < guinier_qsq_lims[1])]
         q2 = lr_df['q^2'].values.reshape(-1, 1)
         lnint = lr_df['ln_int'].values.reshape(-1, 1)
-        # print(f"{q2.shape} {lnint.shape}")
-        linreg = LinearRegression()
-        linreg.fit(q2, lnint)
-        y_pred = linreg.predict(q2)
-        self.Rsq = linreg.score(X=q2, y=lnint)
-        self.m = linreg.coef_[0]
+        q2 = sm.add_constant(q2)
+        model = sm.OLS(lnint, q2)
+        results = model.fit()
+        self.Rsq = results.rsquared
+        self.m = results.params[1]
+        self.m_err = results.bse[1]
+        self.c = results.params[0]
+        self.c_err = results.bse[0]
         if self.m < 0:
             self.R_g = math.sqrt(3 * (-1 * self.m))
+            self.R_g_err = math.sqrt(3 * math.sqrt(self.m_err))
         else:
             print('WARNING: Guinier fit gradient is >0, undefined in this range')
             self.R_g = 0.0
-        self.c = linreg.intercept_
+        # self.c = linreg.intercept_
         self.I_0 = math.exp(self.c)
-        self.cycle_stats_array = [self.tag, self.m[0], self.c[0], self.R_g, self.Rsq]
+        self.cycle_stats_array = [self.tag, self.m, self.m_err, self.c, self.c_err, self.R_g, self.R_g_err, self.Rsq]
         guinier_model = []
         for i, x in enumerate(self.df['q^2'].values):
             guinier_model.append(((self.m * x) + self.c))
@@ -141,7 +149,7 @@ class DataSet:
             plt.xlabel(r'$q^2$')
             plt.ylabel(r'$ln(I)$')
             plt.plot(lr_df['q^2'], lr_df['ln_int'], 'o')
-            plt.plot(q2, y_pred)
+            plt.plot(self.df['q^2'], self.df['guinier_model'])
             plt.show()
         return
 
@@ -159,9 +167,9 @@ class AnalysisRun:
         self.verbosity = 0
         self.dat_list = []
         self.dat_number = 0
-        self.guinier_fit_lims = (0, 1)
-        self.guinier_qsq_lims = (self.guinier_fit_lims[0] ** 2, self.guinier_fit_lims[1] ** 2)
+        self.guinier_qsq_lims = (0, 1)
         self.guinier_qRg = 1.3
+        self.guinier_err_limit = 0.0005
         self.kratky_xlim = 0.5
 
         self.ensemble_stats = []
@@ -186,7 +194,10 @@ class AnalysisRun:
     def write_ensemble_guinier_stats(self):
         self.ensemble_stats_df = pd.DataFrame.from_records(self.ensemble_stats, columns=['Dataset',
                                                                                          'gradient',
-                                                                                         'intercept', 'R_g',
+                                                                                         'gradient_stderror',
+                                                                                         'intercept',
+                                                                                         'intercept_stderror',
+                                                                                         'R_g', 'R_g_stderr',
                                                                                          'R^2'])
         print(self.ensemble_stats_df)
         self.ensemble_stats_df.to_excel(f'{self.analysis_path}Guinier_stats.xlsx', index=False)
@@ -216,7 +227,7 @@ class AnalysisRun:
             cycle_data = DataSet(dotdat=dotdat)
             cycle_data.df[['q', 'int', 'err']].to_excel(f"{self.analysis_path}{cycle_data.tag}.xlsx", index=False)
 
-    def inspect_data(self, tag='', qlims=(0, 100), combine=True, log10=True):
+    def inspect_data(self, tag: str = '', qlims: tuple = (0, 100), combine: bool = True, log10: bool = True):
         self.grab_dotdat_list(tag=tag)
         # Start cycle here:
         if not combine:
@@ -238,7 +249,6 @@ class AnalysisRun:
         elif combine:
             plt.figure()
             plt.xlabel('$q$ $\AA^{-1}$')
-            from matplotlib import cm
             for dotdat in self.dat_list:
                 cycle_data = DataSet(dotdat)
                 cycle_data.read_dotdat()
@@ -266,7 +276,6 @@ class AnalysisRun:
             os.mkdir(trim_path)
 
         # Now we trim to n_points:
-
         for dotdat in self.dat_list:
             cycle_data = DataSet(dotdat)
             split = dotdat.split(sep="\\")
@@ -281,6 +290,17 @@ class AnalysisRun:
                       show_all: bool = False,
                       write_xlsx: bool = True,
                       write_csv: bool = True):
+        """
+        Batch process a set of .dat files using Guinier, Kratky, and norm. Kratky analyses.
+        Optionally writes out a series of xlsx and csv files containing the tranformed files
+        :param guinier: flag to perform guinier analysis within the guinier_qsq_lims
+        :param kratky:
+        :param norm_kratky:
+        :param show_all:
+        :param write_xlsx:
+        :param write_csv:
+        :return:
+        """
         self.file_setup()
 
         for k, dotdat in enumerate(self.dat_list):
@@ -302,8 +322,8 @@ class AnalysisRun:
                 self.ens_log10saxs_df.to_csv(f'{self.analysis_path}logsaxs_{self.dat_number}.csv', index=False)
 
             if guinier:
-                cycle_data.calculate_guiner_plot(guinier_qsq_lims=self.guinier_qsq_lims, guinier_qRg=self.guinier_qRg,
-                                                 show=show_all)
+                cycle_data.calculate_guinier_plot(guinier_qsq_lims=self.guinier_qsq_lims, guinier_qRg=self.guinier_qRg,
+                                                  show=show_all, err_lim=self.guinier_err_limit)
                 self.ens_guinier_df[f"{cycle_data.tag} q^2"] = cycle_data.df['q^2']
                 self.ens_guinier_df[f"{cycle_data.tag} ln_i"] = cycle_data.df['ln_int']
                 self.ens_guinier_df[f"{cycle_data.tag} model"] = cycle_data.df['guinier_model']
